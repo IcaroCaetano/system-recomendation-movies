@@ -15,7 +15,9 @@ data = [
 
 # Definindo o formato do dataset
 df = pd.DataFrame(data, columns=["user", "item", "rating"])
+# Define um "leitor" (Reader) para interpretar os dados.
 reader = Reader(rating_scale=(1, 5))
+# Converte o DataFrame para um formato compatível com a biblioteca Surprise.
 dataset = Dataset.load_from_df(df, reader)
 
 # Dividindo os dados entre treino e teste
@@ -32,7 +34,7 @@ predictions = model.test(testset)
 print("RMSE:", accuracy.rmse(predictions))
 
 # Fazendo uma recomendação personalizada
-user_id = "user1"
-item_id = "filmeB"
+user_id = "user3"
+item_id = "filmeC"
 pred = model.predict(user_id, item_id)
 print(f"Nota prevista para {user_id} no {item_id}: {pred.est:.2f}")
