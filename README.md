@@ -30,16 +30,42 @@ Structure:
 Content-based recommendation uses movie genres to find those most similar to the reference movie.
 
 Steps performed:
+
 - 1 - The "genres" column of movies_metadata.csv is converted to genre lists.
+
 
 - 2 - A one-hot encoding was created for the genres, generating a binary matrix (genres_df).
 
+
 - 3 - The cosine similarity between the movies was calculated to build a similarity matrix (similarity_matrix).
+
 
 - 4 - The recommend_movies_content_based(movie_id, num_recommendations=5) function was implemented:
   - Checks if the movie_id is in the similarity matrix.
   - Retrieves the most similar movies.
   - Returns a list with the titles, release dates, and average ratings.
+
+## 2.2. Collaborative Filtering (KNN)
+
+Collaborative recommendation finds similar movies based on user ratings.
+
+### Steps performed:
+- 1 - Created a user-item matrix (user_movie_ratings), where:
+  - The rows represent users.
+
+  - The columns represent movies.
+  - The values are the ratings given by users to the movies.
+  
+
+- 2 - NaN values (absence of ratings) are replaced by 0.
+
+
+- 3 - Created a KNN model using the cosine similarity metric.
+
+- 4 - Implemented the function recommend_movies_knn(movie_id, num_recommendations=5):
+  - Gets the position of the movie in the matrix.
+  - Uses knn.kneighbors() to find the most similar movies based on the users who rated them.
+  - Returns the recommended movies with title, release date and average rating.
 
 # Features
 ## - Filtering Model:

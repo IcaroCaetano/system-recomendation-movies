@@ -1,6 +1,7 @@
 import pandas as pd
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.neighbors import NearestNeighbors
+from sklearn.feature_extraction.text import TfidfVectorizer
 import numpy as np
 
 # Carregar os datasets
@@ -79,6 +80,24 @@ def recommend_movies_content_based(movie_id, num_recommendations=5):
 
 
 
+# Criar matriz de embeddings das descrições dos filmes
+vectorizer = TfidfVectorizer(stop_words='english')
+descriptions = movies["overview"].fillna("")
+tfidf_matrix = vectorizer.fit_transform(descriptions)
+description_similarity_matrix = cosine_similarity(tfidf_matrix)
+
+description_similarity_df = pd.DataFrame(description_similarity_matrix, index=movies["id"], columns=movies["id"])
+
+# Função de recomendação baseada na descrição
+def recommend_movies_nlp(movie_id, num_recommendations=5):
+    if movie_id not in description_similarity_df.index:
+        print(f"Erro: O movie_id {movie_id} não está na matriz de similaridade de descrições!")
+        return None
+
+    similar_movies = description_similarity_df[movie_id].sort_values(ascending=False)[1:num_recommendations + 1]
+    return movies[movies["id"].isin(similar_movies.index)][["title", "release_date"]]
+
+
 # Criar a matriz user-item
 user_movie_ratings = df.pivot_table(index='userId', columns='movieId', values='rating')
 
@@ -119,28 +138,20 @@ def recommend_movies_knn(movie_id, num_recommendations=5):
 
 
 
-
-
 # Geramos recomendações usando ambos os métodos:
 # - KNN (Filtragem Colaborativa): Recomendação baseada nas avaliações de usuários.
 # - Similaridade de Conteúdo (Cosseno): Recomendação baseada nos gêneros dos filmes.
+# -
 def recommend_movies_hybrid(movie_id, num_recommendations=5):
-    """
-    Modelo híbrido que combina recomendações de conteúdo e colaborativa,
-    ordenando os filmes pela melhor média de avaliação.
-    """
-
     content_recommendations = recommend_movies_content_based(movie_id, num_recommendations * 2)
     knn_recommendations = recommend_movies_knn(movie_id, num_recommendations * 2)
+    nlp_recommendations = recommend_movies_nlp(movie_id, num_recommendations * 2)
 
-    if content_recommendations is None or knn_recommendations is None:
+    if content_recommendations is None or knn_recommendations is None or nlp_recommendations is None:
         return None
 
-    hybrid_recommendations = pd.concat([content_recommendations, knn_recommendations]).drop_duplicates()
-
-    # Ordenar pela maior média de avaliações
-    hybrid_recommendations = hybrid_recommendations.sort_values(by="avg_rating", ascending=False)
-
+    hybrid_recommendations = pd.concat(
+        [content_recommendations, knn_recommendations, nlp_recommendations]).drop_duplicates()
     return hybrid_recommendations.head(num_recommendations)
 
 
@@ -149,18 +160,28 @@ def main():
         try:
             movie_id = int(input("\nDigite o ID do filme para recomendação (ou 0 para sair): "))
 
+            try:
+                num_recommendations = int(input("Digite o número de recomendações desejadas (padrão: 5): "))
+                num_recommendations = num_recommendations if num_recommendations > 0 else 5
+            except ValueError:
+                print("Valor inválido, utilizando o padrão de 5 recomendações.")
+                num_recommendations = 5
+
             if movie_id == 0:
                 print("Saindo do sistema...")
                 break
 
             print("\n🔹 Recomendação Baseada em Conteúdo:")
-            print(recommend_movies_content_based(movie_id, num_recommendations=5))
+            print(recommend_movies_content_based(movie_id, num_recommendations))
 
             print("\n🔹 Recomendação Colaborativa (KNN):")
-            print(recommend_movies_knn(movie_id, num_recommendations=5))
+            print(recommend_movies_knn(movie_id, num_recommendations))
 
-            print("\n🔹 Recomendação Híbrida:")
-            print(recommend_movies_hybrid(movie_id, num_recommendations=5))
+            print("\n🔹 Recomendação por Descrição (NLP):")
+            print(recommend_movies_nlp(movie_id, num_recommendations))
+
+            print("\n🔹 Recomendação Híbrida Aprimorada:")
+            print(recommend_movies_hybrid(movie_id, num_recommendations))
 
         except ValueError:
             print("❌ Erro: Digite um número válido para o movie_id.")
