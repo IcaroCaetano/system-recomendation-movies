@@ -37,6 +37,15 @@ user_profile = df.groupby(["userId", "movieId"])["rating"].mean().unstack()
 #print(user_profile.head())
 
 
+# Criar um dataframe com a média das avaliações dos filmes
+average_ratings = ratings.groupby("movieId")["rating"].mean().reset_index()
+average_ratings.rename(columns={"rating": "avg_rating"}, inplace=True)
+
+# Juntar essa informação com o dataset de filmes
+movies_with_ratings = movies.merge(average_ratings, left_on="id", right_on="movieId", how="left").fillna(0)
+
+
+
 
 # Calcular a similaridade entre os filmes com base nos gêneros
 similarity_matrix = cosine_similarity(genres_df)
@@ -53,33 +62,21 @@ similarity_df = pd.DataFrame(similarity_matrix, index=genres_df.index, columns=g
 # do cosseno entre os filmes com base nos gêneros.
 def recommend_movies_content_based(movie_id, num_recommendations=5):
     """
-    Retorna recomendações de filmes semelhantes com base no conteúdo (gêneros).
-
-    Parâmetros:
-    - movie_id: ID do filme de referência.
-    - num_recommendations: Número de filmes recomendados.
+    Retorna recomendações de filmes semelhantes com base no conteúdo (gêneros),
+    listando título, data de lançamento e média de avaliações.
     """
-
-    # Buscar o título do filme correspondente ao movie_id
     movie_title = movies[movies["id"] == movie_id]["title"].values
 
-    # Verifique se o movie_id está na matriz de similaridade
     if movie_id not in similarity_df.index:
         print(f"Erro: O movie_id {movie_id} não está na matriz de similaridade!")
         return None
 
     print(f"Título do filme de referência: {movie_title[0]}")
 
-    # Encontrar os filmes mais similares ao informado
     similar_movies = similarity_df[movie_id].sort_values(ascending=False)[1:num_recommendations + 1]
 
-    # Retornar os títulos dos filmes semelhantes
-    return movies[movies["id"].isin(similar_movies.index)][["title"]]
+    return movies_with_ratings[movies_with_ratings["id"].isin(similar_movies.index)][["title", "release_date", "avg_rating"]]
 
-
-# **Testando a Recomendação Baseada em Conteúdo**
-movie_id = 3  # Escolha um filme para testar
-print(recommend_movies_content_based(movie_id=movie_id, num_recommendations=5))
 
 
 # Criar a matriz user-item
@@ -96,7 +93,11 @@ knn.fit(user_movie_ratings.values)
 # de filtragem colaborativa usando o KNM
 # Ajustar para garantir que o input tenha a mesma dimensão
 def recommend_movies_knn(movie_id, num_recommendations=5):
-    # Buscar o título do filme correspondente ao movie_id
+    """
+    Retorna recomendações usando KNN (Filtragem Colaborativa),
+    listando título, data de lançamento e média de avaliações.
+    """
+
     movie_title = movies[movies["id"] == movie_id]["title"].values
 
     if movie_id not in user_movie_ratings.columns:
@@ -105,69 +106,64 @@ def recommend_movies_knn(movie_id, num_recommendations=5):
 
     print(f"Título do filme de referência: {movie_title[0]}")
 
-    # Encontrar o índice do filme na matriz
     movie_index = user_movie_ratings.columns.get_loc(movie_id)
 
-    # Ajustar a entrada para ter o mesmo número de features
     movie_vector = np.zeros((1, user_movie_ratings.shape[1]))
-    movie_vector[0, movie_index] = 1  # Ativar a posição do filme pesquisado
+    movie_vector[0, movie_index] = 1
 
-    # Encontrar os k vizinhos mais próximos
     distances, indices = knn.kneighbors(movie_vector, n_neighbors=num_recommendations + 1)
 
-    # Pegar os filmes recomendados (excluindo o próprio filme)
     recommended_movies = user_movie_ratings.columns[indices.flatten()[1:]]
 
-    # Retornar os títulos dos filmes recomendados
-    return movies[movies["id"].isin(recommended_movies)][["title"]]
+    return movies_with_ratings[movies_with_ratings["id"].isin(recommended_movies)][["title", "release_date", "avg_rating"]]
 
 
-# Exemplo: recomendar 5 filmes parecidos com um filme específico usando KNN
-movie_id = 3
-print(recommend_movies_knn(movie_id=movie_id, num_recommendations=5))
+
+
 
 # Geramos recomendações usando ambos os métodos:
 # - KNN (Filtragem Colaborativa): Recomendação baseada nas avaliações de usuários.
 # - Similaridade de Conteúdo (Cosseno): Recomendação baseada nos gêneros dos filmes.
-def recommend_movies_hybrid(movie_id, num_recommendations=5, weight_knn=0.5, weight_content=0.5):
+def recommend_movies_hybrid(movie_id, num_recommendations=5):
     """
-    Modelo híbrido que combina Filtragem Colaborativa (KNN) e Filtragem Baseada em Conteúdo (Cosseno).
-
-    Parâmetros:
-    - movie_id: ID do filme de referência.
-    - num_recommendations: Número de filmes recomendados.
-    - weight_knn: Peso da recomendação KNN.
-    - weight_content: Peso da recomendação baseada em conteúdo.
+    Modelo híbrido que combina recomendações de conteúdo e colaborativa,
+    ordenando os filmes pela melhor média de avaliação.
     """
 
-    # Obter recomendações de ambos os métodos
-    knn_recommendations = recommend_movies_knn(movie_id, num_recommendations)
-    content_recommendations = recommend_movies_content_based(movie_id, num_recommendations)
+    content_recommendations = recommend_movies_content_based(movie_id, num_recommendations * 2)
+    knn_recommendations = recommend_movies_knn(movie_id, num_recommendations * 2)
 
-    # Se algum método falhar, retorna o outro
-    if knn_recommendations is None:
-        return content_recommendations
-    if content_recommendations is None:
-        return knn_recommendations
+    if content_recommendations is None or knn_recommendations is None:
+        return None
 
-    # Criar um dicionário para armazenar os pesos
-    scores = {}
+    hybrid_recommendations = pd.concat([content_recommendations, knn_recommendations]).drop_duplicates()
 
-    # Adicionar pesos das recomendações KNN
-    for i, row in knn_recommendations.iterrows():
-        scores[row["title"]] = scores.get(row["title"], 0) + weight_knn * (num_recommendations - i)
+    # Ordenar pela maior média de avaliações
+    hybrid_recommendations = hybrid_recommendations.sort_values(by="avg_rating", ascending=False)
 
-    # Adicionar pesos das recomendações Baseadas em Conteúdo
-    for i, row in content_recommendations.iterrows():
-        scores[row["title"]] = scores.get(row["title"], 0) + weight_content * (num_recommendations - i)
-
-    # Ordenar filmes por pontuação e selecionar os melhores
-    sorted_movies = sorted(scores.items(), key=lambda x: x[1], reverse=True)
-    recommended_titles = [movie[0] for movie in sorted_movies[:num_recommendations]]
-
-    return recommended_titles
+    return hybrid_recommendations.head(num_recommendations)
 
 
-# 🔥 **Testando a Recomendação Híbrida**
-movie_id = 2  # Escolha um filme para testar
-print(recommend_movies_hybrid(movie_id=movie_id, num_recommendations=5))
+def main():
+    while True:
+        try:
+            movie_id = int(input("\nDigite o ID do filme para recomendação (ou 0 para sair): "))
+
+            if movie_id == 0:
+                print("Saindo do sistema...")
+                break
+
+            print("\n🔹 Recomendação Baseada em Conteúdo:")
+            print(recommend_movies_content_based(movie_id, num_recommendations=5))
+
+            print("\n🔹 Recomendação Colaborativa (KNN):")
+            print(recommend_movies_knn(movie_id, num_recommendations=5))
+
+            print("\n🔹 Recomendação Híbrida:")
+            print(recommend_movies_hybrid(movie_id, num_recommendations=5))
+
+        except ValueError:
+            print("❌ Erro: Digite um número válido para o movie_id.")
+
+if __name__ == "__main__":
+    main()
