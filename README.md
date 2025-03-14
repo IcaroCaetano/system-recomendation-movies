@@ -147,7 +147,12 @@ The program displays an interactive menu in the terminal, where the user can ent
 
 ## Usage
 
-1. Run the app:
+1. Install
   ```bash
-  python app.py
+    pip install -r requirements.txt
+  ```
+
+2. Run the app:
+  ```bash
+    python app.py
   ```
