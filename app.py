@@ -110,13 +110,11 @@ knn.fit(user_movie_ratings.values)
 
 # Função para recomendar filmes semelhantes usando o modelo
 # de filtragem colaborativa usando o KNM
-# Ajustar para garantir que o input tenha a mesma dimensão
 def recommend_movies_knn(movie_id, num_recommendations=5):
     """
     Retorna recomendações usando KNN (Filtragem Colaborativa),
     listando título, data de lançamento e média de avaliações.
     """
-
     movie_title = movies[movies["id"] == movie_id]["title"].values
 
     if movie_id not in user_movie_ratings.columns:
@@ -125,13 +123,17 @@ def recommend_movies_knn(movie_id, num_recommendations=5):
 
     print(f"Título do filme de referência: {movie_title[0]}")
 
+    # Encontrar o índice do filme na matriz
     movie_index = user_movie_ratings.columns.get_loc(movie_id)
 
+    # Ajustar a entrada para ter o mesmo número de features
     movie_vector = np.zeros((1, user_movie_ratings.shape[1]))
     movie_vector[0, movie_index] = 1
 
+    # Encontrar os k vizinhos mais próximos
     distances, indices = knn.kneighbors(movie_vector, n_neighbors=num_recommendations + 1)
 
+    # Pegar os filmes recomendados (excluindo o próprio filme)
     recommended_movies = user_movie_ratings.columns[indices.flatten()[1:]]
 
     return movies_with_ratings[movies_with_ratings["id"].isin(recommended_movies)][["title", "release_date", "avg_rating"]]
@@ -141,15 +143,18 @@ def recommend_movies_knn(movie_id, num_recommendations=5):
 # Geramos recomendações usando ambos os métodos:
 # - KNN (Filtragem Colaborativa): Recomendação baseada nas avaliações de usuários.
 # - Similaridade de Conteúdo (Cosseno): Recomendação baseada nos gêneros dos filmes.
-# -
+# - Similaridade de Conteúdo (Cosseno): Recomendação baseada na descricao dos filmes.
 def recommend_movies_hybrid(movie_id, num_recommendations=5):
+    # 1 **Filtragem Baseada em Conteúdo**
     content_recommendations = recommend_movies_content_based(movie_id, num_recommendations * 2)
+    # 2 **Filtragem Colaborativa**
     knn_recommendations = recommend_movies_knn(movie_id, num_recommendations * 2)
+    # 3 **Filtragem Baseada na descricao**
     nlp_recommendations = recommend_movies_nlp(movie_id, num_recommendations * 2)
 
     if content_recommendations is None or knn_recommendations is None or nlp_recommendations is None:
         return None
-
+    # 4 **Unir e Normalizar os Resultados**
     hybrid_recommendations = pd.concat(
         [content_recommendations, knn_recommendations, nlp_recommendations]).drop_duplicates()
     return hybrid_recommendations.head(num_recommendations)
@@ -160,6 +165,10 @@ def main():
         try:
             movie_id = int(input("\nDigite o ID do filme para recomendação (ou 0 para sair): "))
 
+            if movie_id == 0:
+                print("Saindo do sistema...")
+                break
+
             try:
                 num_recommendations = int(input("Digite o número de recomendações desejadas (padrão: 5): "))
                 num_recommendations = num_recommendations if num_recommendations > 0 else 5
@@ -167,18 +176,15 @@ def main():
                 print("Valor inválido, utilizando o padrão de 5 recomendações.")
                 num_recommendations = 5
 
-            if movie_id == 0:
-                print("Saindo do sistema...")
-                break
 
             print("\n🔹 Recomendação Baseada em Conteúdo:")
             print(recommend_movies_content_based(movie_id, num_recommendations))
 
-            print("\n🔹 Recomendação Colaborativa (KNN):")
-            print(recommend_movies_knn(movie_id, num_recommendations))
-
             print("\n🔹 Recomendação por Descrição (NLP):")
             print(recommend_movies_nlp(movie_id, num_recommendations))
+
+            print("\n🔹 Recomendação Colaborativa (KNN):")
+            print(recommend_movies_knn(movie_id, num_recommendations))
 
             print("\n🔹 Recomendação Híbrida Aprimorada:")
             print(recommend_movies_hybrid(movie_id, num_recommendations))
